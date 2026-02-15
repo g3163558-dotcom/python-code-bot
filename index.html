@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Python Code Ny IDE - Pro Edition</title>
+    <!-- Библиотеки -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.4/ace.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.4/ext-language_tools.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.4/mode-python.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.23.4/worker-javascript.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-dark: #1e1f22;
+            --bg-sidebar: #2b2d30;
+            --accent-blue: #3574f0;
+            --border-color: #393b40;
+            --text-main: #dfe1e5;
+        }
+
+        body { 
+            background-color: var(--bg-dark); 
+            color: var(--text-main); 
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        #editor { height: 100%; width: 100%; font-size: 14px; background: var(--bg-dark); }
+        
+        .ace_gutter-cell.ace_error {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='%23ff5252'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .sidebar-item {
+            transition: all 0.2s ease;
+            border-radius: 4px;
+            margin: 2px 8px;
+            padding: 8px 12px;
+        }
+        .sidebar-item.active { background-color: #2e436e; color: #fff; }
+        .sidebar-item:hover:not(.active) { background-color: #323438; }
+
+        #console {
+            background: #1e1f22;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .console-status { color: #888; font-weight: bold; }
+        .console-error { color: #ff5252; }
+        .console-finished { color: #59a869; font-weight: bold; }
+
+        .console-input-wrapper {
+            display: inline-flex;
+            width: auto;
+            min-width: 50px;
+            align-items: center;
+        }
+        
+        #console-input {
+            background: transparent;
+            border: none;
+            color: #59a869;
+            outline: none;
+            font-family: inherit;
+            font-size: inherit;
+            padding: 0;
+            margin: 0;
+            width: 100%;
+        }
+
+        /* Ресайзер для консоли */
+        #console-resizer {
+            height: 6px;
+            background: transparent;
+            cursor: ns-resize;
+            width: 100%;
+            position: absolute;
+            top: -3px;
+            z-index: 50;
+        }
+        #console-resizer:hover, #console-resizer.active {
+            background: var(--accent-blue);
+        }
+
+        .dialog-card {
+            background: #2b2d30;
+            border: 1px solid #4e5157;
+            border-radius: 12px;
+            width: 90%; max-width: 400px;
+            padding: 20px;
+        }
+
+        /* Режимы отображения */
+        body.mobile-mode #sidebar { display: none; }
+        body.mobile-mode #editor { font-size: 16px !important; }
+
+        #turtle-canvas canvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col" onclick="hideContextMenu()">
+
+    <div id="file-dialog" class="fixed inset-0 bg-black/60 z-[2000] hidden items-center justify-center backdrop-blur-sm">
+        <div class="dialog-card">
+            <h3 class="text-sm font-semibold mb-3 text-blue-400">Создать файл</h3>
+            <input type="text" id="new-file-name" class="w-full bg-[#1e1f22] border border-[#4e5157] text-white p-3 rounded outline-none focus:border-blue-500" placeholder="main.py">
+            <div class="mt-4 flex justify-end gap-2 text-sm">
+                <button onclick="closeFileDialog()" class="px-4 py-2 text-gray-400">Отмена</button>
+                <button onclick="confirmCreateFile()" class="bg-blue-600 px-6 py-2 rounded font-medium text-white shadow-lg">Создать</button>
+            </div>
+        </div>
+    </div>
+
+    <header class="h-11 bg-[#2b2d30] border-b border-[#393b40] flex items-center justify-between px-4 z-40">
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <div class="w-7 h-7 bg-[#3574f0] rounded flex items-center justify-center text-[11px] font-bold text-white shadow-lg">NY</div>
+                <span class="text-sm font-bold hidden sm:inline">Python Ny</span>
+            </div>
+            <div class="flex items-center gap-2 border-r border-[#393b40] pr-3 mr-1">
+                <button onclick="runCode()" class="bg-[#59a869] hover:bg-[#4ea05d] text-white px-5 py-1.5 rounded text-xs font-bold flex items-center gap-2 transition active:scale-90 shadow-md">
+                    <i class="fas fa-play"></i> <span>Run</span>
+                </button>
+                <button onclick="openFileDialog()" class="bg-[#393b40] text-gray-200 px-3 py-1.5 rounded text-xs hover:bg-[#4e5157] transition">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+            
+            <!-- Кнопка смены режима (ПК / Мобильный) -->
+            <button id="mode-toggle-btn" onclick="toggleDeviceMode()" class="flex items-center gap-2 bg-[#393b40] hover:bg-[#4e5157] text-gray-300 px-3 py-1.5 rounded text-xs transition active:bg-blue-600">
+                <i id="mode-icon" class="fas fa-laptop"></i>
+                <span id="mode-text" class="hidden md:inline">Desktop</span>
+            </button>
+        </div>
+        
+        <div class="flex items-center gap-3 text-[11px]">
+            <a href="https://t.me/python_code_ny" target="_blank" class="text-gray-400 hover:text-blue-400 transition flex items-center gap-1">
+                <i class="fab fa-telegram text-base"></i> <span class="hidden md:inline">Канал</span>
+            </a>
+            <a href="https://t.me/python_code_ny_bot" target="_blank" class="text-gray-400 hover:text-blue-400 transition flex items-center gap-1">
+                <i class="fas fa-robot text-base"></i> <span class="hidden md:inline">Бот</span>
+            </a>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden relative">
+        <aside id="sidebar" class="w-60 bg-[#2b2d30] border-r border-[#393b40] flex flex-col select-none transition-all duration-300">
+            <div class="p-3 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Проводник</div>
+            <div id="file-list" class="flex-1 overflow-y-auto"></div>
+        </aside>
+
+        <main class="flex-1 flex flex-col bg-[#1e1f22] min-w-0">
+            <div id="tabs" class="flex h-9 bg-[#2b2d30] border-b border-[#1e1f22] overflow-x-auto"></div>
+            <div class="flex-1 relative overflow-hidden">
+                <div id="editor"></div>
+            </div>
+
+            <!-- Область консоли с ресайзером -->
+            <div id="console-box" class="h-56 flex flex-col border-t border-[#393b40] bg-[#1e1f22] relative shrink-0">
+                <div id="console-resizer"></div>
+                <div class="h-8 bg-[#2b2d30] px-4 flex items-center justify-between shrink-0">
+                    <span class="text-[10px] font-bold text-gray-500 uppercase">Консоль</span>
+                    <button onclick="clearConsole()" class="text-gray-500 hover:text-white p-1"><i class="fas fa-trash-alt text-[10px]"></i></button>
+                </div>
+                <div id="console" class="flex-1 overflow-y-auto p-3 text-gray-300"></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="preview-modal" class="fixed inset-0 bg-black/80 z-[3000] flex items-center justify-center hidden backdrop-blur-md p-4">
+        <div class="bg-white rounded-xl shadow-2xl overflow-hidden w-full h-full max-w-4xl max-h-[80vh] flex flex-col">
+            <div class="bg-gray-100 px-4 py-3 border-b flex justify-between items-center">
+                <span id="preview-title" class="text-xs font-bold text-gray-600 uppercase">Turtle Graphics</span>
+                <button onclick="closePreview()" class="text-gray-500 hover:text-red-500 p-2"><i class="fas fa-times text-lg"></i></button>
+            </div>
+            <div id="preview-content" class="flex-1 relative bg-white flex items-center justify-center overflow-hidden"></div>
+        </div>
+    </div>
+
+    <div id="context-menu" class="hidden fixed z-[5000] bg-[#2b2d30] border border-[#4e5157] rounded-md shadow-xl p-1 min-w-[160px]">
+        <div class="menu-item p-3 hover:bg-blue-600 rounded text-sm cursor-pointer flex items-center gap-2 text-white" onclick="deleteCurrentFile()"><i class="fas fa-trash text-red-400"></i> Удалить</div>
+    </div>
+
+    <script>
+        let files = JSON.parse(localStorage.getItem('pyny_v8')) || {
+            'main.py': "name = input('Как тебя зовут: ')\nprint('Привет, ' + name + '!')\n\n# Кнопка смены режима теперь сверху в меню!\nprint('IDE готова к работе.')"
+        };
+        let currentFile = Object.keys(files)[0];
+        let isMobileMode = false;
+
+        const editor = ace.edit("editor");
+        editor.setTheme("ace/theme/one_dark");
+        editor.session.setMode("ace/mode/python");
+        editor.setOptions({
+            enableBasicAutocompletion: true,
+            enableLiveAutocompletion: true,
+            fontFamily: "'JetBrains Mono', monospace",
+            useWorker: true,
+            fontSize: "14px",
+            wrap: true,
+            indentedSoftWrap: false,
+            autoScrollEditorIntoView: true
+        });
+
+        // Функция переключения режимов
+        function toggleDeviceMode() {
+            isMobileMode = !isMobileMode;
+            const body = document.body;
+            const icon = document.getElementById('mode-icon');
+            const text = document.getElementById('mode-text');
+            const btn = document.getElementById('mode-toggle-btn');
+
+            if (isMobileMode) {
+                body.classList.add('mobile-mode');
+                icon.className = 'fas fa-mobile-alt';
+                text.innerText = 'Mobile';
+                btn.classList.add('bg-blue-600', 'text-white');
+                editor.setFontSize("16px");
+            } else {
+                body.classList.remove('mobile-mode');
+                icon.className = 'fas fa-laptop';
+                text.innerText = 'Desktop';
+                btn.classList.remove('bg-blue-600', 'text-white');
+                editor.setFontSize("14px");
+            }
+            editor.resize();
+        }
+
+        // ЛОГИКА РЕСАЙЗЕРА КОНСОЛИ
+        const consoleBox = document.getElementById('console-box');
+        const resizer = document.getElementById('console-resizer');
+        let isResizing = false;
+
+        const startResizing = (e) => {
+            isResizing = true;
+            resizer.classList.add('active');
+            document.body.style.cursor = 'ns-resize';
+            document.addEventListener('mousemove', handleResizing);
+            document.addEventListener('touchmove', handleResizing, { passive: false });
+            document.addEventListener('mouseup', stopResizing);
+            document.addEventListener('touchend', stopResizing);
+        };
+
+        const handleResizing = (e) => {
+            if (!isResizing) return;
+            if (e.type === 'touchmove') e.preventDefault();
+            
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const height = window.innerHeight - clientY;
+            
+            if (height > 40 && height < window.innerHeight * 0.85) {
+                consoleBox.style.height = `${height}px`;
+                editor.resize();
+            }
+        };
+
+        const stopResizing = () => {
+            isResizing = false;
+            resizer.classList.remove('active');
+            document.body.style.cursor = 'default';
+            document.removeEventListener('mousemove', handleResizing);
+            document.removeEventListener('touchmove', handleResizing);
+        };
+
+        resizer.addEventListener('mousedown', startResizing);
+        resizer.addEventListener('touchstart', startResizing);
+
+        function save() { localStorage.setItem('pyny_v8', JSON.stringify(files)); }
+        
+        function updateFileList() {
+            const list = document.getElementById('file-list');
+            list.innerHTML = '';
+            Object.keys(files).sort().forEach(name => {
+                const div = document.createElement('div');
+                div.className = `sidebar-item flex items-center gap-2 cursor-pointer text-sm ${name === currentFile ? 'active' : 'text-gray-400'}`;
+                const icon = name.endsWith('.py') ? 'fab fa-python text-blue-400' : 'fas fa-file-alt text-gray-500';
+                div.innerHTML = `<i class="${icon} text-xs"></i> <span class="truncate">${name}</span>`;
+                div.onclick = () => switchFile(name);
+                div.oncontextmenu = (e) => { e.preventDefault(); showContextMenu(e); };
+                list.appendChild(div);
+            });
+            updateTabs();
+        }
+
+        function updateTabs() {
+            const tabs = document.getElementById('tabs');
+            tabs.innerHTML = `<div class="px-4 flex items-center gap-2 text-xs h-full bg-[#1e1f22] border-t-2 border-blue-500 text-white min-w-[130px] shrink-0">
+                <i class="${currentFile.endsWith('.py') ? 'fab fa-python text-blue-400' : 'fas fa-file-alt'}"></i> ${currentFile}
+            </div>`;
+        }
+
+        function switchFile(name) {
+            files[currentFile] = editor.getValue();
+            currentFile = name;
+            editor.setValue(files[name], -1);
+            editor.session.setMode(name.endsWith('.py') ? "ace/mode/python" : "ace/mode/text");
+            updateFileList();
+        }
+
+        function openFileDialog() { document.getElementById('file-dialog').classList.replace('hidden', 'flex'); }
+        function closeFileDialog() { document.getElementById('file-dialog').classList.replace('flex', 'hidden'); }
+        function confirmCreateFile() {
+            const name = document.getElementById('new-file-name').value.trim();
+            if (name && !files[name]) {
+                files[name] = ""; switchFile(name); closeFileDialog();
+            }
+        }
+
+        function deleteCurrentFile() {
+            if (Object.keys(files).length > 1) {
+                delete files[currentFile];
+                currentFile = Object.keys(files)[0];
+                editor.setValue(files[currentFile], -1);
+                updateFileList();
+            }
+        }
+
+        function showContextMenu(e) {
+            const menu = document.getElementById('context-menu');
+            menu.classList.remove('hidden');
+            menu.style.left = Math.min(e.pageX, window.innerWidth - 170) + 'px';
+            menu.style.top = e.pageY + 'px';
+        }
+        function hideContextMenu() { document.getElementById('context-menu').classList.add('hidden'); }
+
+        function outf(text, type = "normal") {
+            const con = document.getElementById("console");
+            const span = document.createElement("span");
+            span.innerText = text;
+            if (type === "status") span.className = "console-status";
+            if (type === "error") span.className = "console-error";
+            if (type === "finished") span.className = "console-finished";
+            con.appendChild(span);
+            con.scrollTop = con.scrollHeight;
+        }
+
+        async function consoleInput(promptText) {
+            if (promptText) outf(promptText);
+            
+            return new Promise((resolve) => {
+                const con = document.getElementById("console");
+                const wrapper = document.createElement("span");
+                wrapper.className = "console-input-wrapper";
+                
+                const input = document.createElement("input");
+                input.id = "console-input";
+                input.autocomplete = "off";
+                
+                wrapper.appendChild(input);
+                con.appendChild(wrapper);
+                
+                input.style.width = "20px"; 
+                input.oninput = () => {
+                    input.style.width = (input.value.length + 2) * 8 + "px";
+                };
+
+                input.focus();
+                
+                input.onkeydown = (e) => {
+                    if (e.key === 'Enter') {
+                        const val = input.value;
+                        const resultText = document.createTextNode(val + "\n");
+                        wrapper.replaceWith(resultText);
+                        resolve(val);
+                    }
+                };
+            });
+        }
+
+        function clearConsole() { document.getElementById('console').innerHTML = ''; }
+
+        function runCode() {
+            const code = editor.getValue();
+            files[currentFile] = code; save();
+            clearConsole();
+            
+            outf("[Start]", "status");
+            outf("\n\n");
+
+            const modal = document.getElementById('preview-modal');
+            const content = document.getElementById('preview-content');
+
+            Sk.configure({
+                output: (t) => outf(t),
+                read: (x) => {
+                    if (files[x]) return files[x];
+                    if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined) throw "File not found";
+                    return Sk.builtinFiles["files"][x];
+                },
+                inputfun: consoleInput,
+                inputfunTakesPrompt: true,
+                __future__: Sk.python3
+            });
+
+            if (code.includes('turtle')) {
+                modal.classList.remove('hidden');
+                content.innerHTML = `<div id="turtle-canvas" style="width: 100%; height: 100%;"></div>`;
+                (Sk.TurtleGraphics || (Sk.TurtleGraphics = {})).target = 'turtle-canvas';
+            }
+
+            Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("<stdin>", false, code, true))
+            .then(() => {
+                outf("\n\n");
+                outf("[Finished - 0 errors]", "finished");
+            }, (err) => {
+                outf("\n\n");
+                outf("[Error]: " + err.toString(), "error");
+            });
+        }
+
+        function closePreview() { document.getElementById('preview-modal').classList.add('hidden'); }
+
+        window.addEventListener('resize', () => {
+            editor.resize();
+        });
+
+        window.onload = () => {
+            editor.setValue(files[currentFile], -1);
+            updateFileList();
+            editor.on('change', () => { files[currentFile] = editor.getValue(); save(); });
+        };
+    </script>
+</body>
+</html>
